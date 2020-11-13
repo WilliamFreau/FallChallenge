@@ -33,4 +33,16 @@ public class DeltaTest {
         Delta compare = new Delta(3, 5, 4, 9);
         assertFalse(base.more(compare));
     }
+    
+    @Test
+    public void testSumDelta() {
+        Delta ref = new Delta(2, 3, 0, 5);
+        Delta diff = new Delta(-1, -2, 0, 0);
+        Delta result = ref.sum(diff);
+        
+        assertEquals(1, result.d1);
+        assertEquals(1, result.d2);
+        assertEquals(0, result.d3);
+        assertEquals(5, result.d4);
+    }
 }

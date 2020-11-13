@@ -1,6 +1,6 @@
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 
 public class InventoryTest {
     
@@ -15,6 +15,20 @@ public class InventoryTest {
         assertEquals(inv.rupees, 5);
     }
     
+    
+    @Test
+    public void testNotFeaseable() {
+        Receipt receipt = new Receipt(41, new Delta(-2, -2, -2, 0), 10, "BREW", 0, 0, false, false);
+        Inventory inv = new Inventory(new Delta(3, 0, 0, 0), 5);
+        assertFalse(inv.isFeasable(receipt));
+    }
+    
+    @Test
+    public void testFeaseable() {
+        Receipt receipt = new Receipt(41, new Delta(-3, 0, 0, 0), 10, "BREW", 0, 0, false, false);
+        Inventory inv = new Inventory(new Delta(3, 0, 0, 0), 5);
+        assertTrue(inv.isFeasable(receipt));
+    }
     
     
 }
