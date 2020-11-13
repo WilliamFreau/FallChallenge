@@ -38,11 +38,13 @@ class Game {
     List<Receipt> receipts;
     Inventory myInventory, opponentInventory;
     
+    public Game() {
+        this.receipts = new ArrayList<>();
+    }
+    
     public Game(Scanner in) {
+        this();
         this.in = in;
-        
-        this.receipts = new ArrayList<Receipt>();
-        
     }
     
     public void readInput() {
