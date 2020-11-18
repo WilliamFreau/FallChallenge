@@ -1,5 +1,4 @@
 import java.util.*;
-import java.util.stream.IntStream;
 
 /**
  * Static class Univers to keep track info between turn
@@ -109,12 +108,20 @@ class Player {
             solver.solve();
             Path path = null;
             if(Univers.currentDestination == null || Univers.destNoMoreBrewable() || solver.paths.get(Univers.currentDestination) == null) {
-                OptionalDouble avg = solver.paths.entrySet().stream().flatMapToInt(receiptPathEntry -> IntStream.of(receiptPathEntry.getValue().nodes.size())).average();
+                double avg = 0;
+                int nb = 0;
+                for(Path pavg : solver.paths.values()){
+                    if(pavg != null) {
+                        avg += pavg.nodes.size();
+                        nb ++;
+                    }
+                }
+                avg = avg/nb;
                 double min = Double.MAX_VALUE;
                 for (Path p : solver.paths.values()) {
-                    if ((p.nodes.size() - avg.getAsDouble()) < min) {
+                    if ((p.nodes.size() - avg) < min) {
                         path = p;
-                        min = (p.nodes.size() - avg.getAsDouble());
+                        min = (p.nodes.size() - avg);
                     }
                 }
                 if (path != null) {
@@ -146,7 +153,7 @@ class Player {
  * Permit to solve all Brewable from my inventory
  */
 class Solver {
-    private static final int DEPTH_LIMIT = 50;
+    private static final int DEPTH_LIMIT = 100;
     private static long mean_required_solve_time = 50;
     private static long number_solve_turn = 1;
     
@@ -237,11 +244,10 @@ class Solver {
                 if(current.currentDelta.t1 < learn.tome_index)
                     continue;
                 
-                boolean addCurrent = true;
                 PathNode nextNode = new PathNode(current, learn);
                 
                 //Look if it's not a duplicated state with better depth
-                keepOpenListClean(openList, addCurrent, nextNode);
+                keepOpenListClean(openList, nextNode);
             }
             
             //Create subnode for cast
@@ -249,21 +255,42 @@ class Solver {
                 boolean addCurrent = true;
                 PathNode nextNode;
                 if(!cast.castable) {        //Look if need to rest
-                    nextNode = new PathNode(current, Receipt.res_receipt.clone());
+                    nextNode = new PathNode(current, Receipt.rest_receipt.clone());
+                    if(nextNode.depth > DEPTH_LIMIT)                        //Stop at depth
+                        break;
+    
+                    //Look if it's not a duplicated state with better depth
+                    keepOpenListClean(openList, nextNode);
                 }
                 else {
+                    if(cast.repeatable) {
+                        int multiply = 1;
+                        Delta nDelta = cast.delta.multiply(multiply);
+                        while(current.currentDelta.feasable(nDelta)) {
+                            nextNode = new PathNode(current, cast.clone());
+                            if(nextNode.depth > DEPTH_LIMIT)                        //Stop at depth
+                                break;
+                            
+                            //Look if it's not a duplicated state with better depth
+                            keepOpenListClean(openList, nextNode);
+                            
+                            multiply++;
+                            nDelta = cast.delta.multiply(multiply);
+                        }
+                    } else {
+                        //Need to check if cast is feasable
+                        if (!current.currentDelta.feasable(cast.delta))
+                            continue;
     
-                    //Need to check if cast is feasable
-                    if (!current.currentDelta.feasable(cast.delta))
-                        continue;
+                        nextNode = new PathNode(current, cast);
+                        if(nextNode.depth > DEPTH_LIMIT)                        //Stop at depth
+                            break;
     
-                    nextNode = new PathNode(current, cast);
+                        //Look if it's not a duplicated state with better depth
+                        keepOpenListClean(openList, nextNode);
+                    }
                 }
-                if(nextNode.depth > DEPTH_LIMIT)                        //Stop at depth
-                    break;
-    
-                //Look if it's not a duplicated state with better depth
-                keepOpenListClean(openList, addCurrent, nextNode);
+
             }
             
             mean_required_solve_time += (Timer.currentElapsed()-startTime);
@@ -281,11 +308,11 @@ class Solver {
     /**
      * Keep the openList clean
      * @param openList  The open node list
-     * @param addCurrent    If it's required to add the current node
      * @param nextNode      The next node
      */
-    private void keepOpenListClean(List<PathNode> openList, boolean addCurrent, PathNode nextNode) {
+    private void keepOpenListClean(List<PathNode> openList, PathNode nextNode) {
         List<PathNode> toRemove = new ArrayList<>();            //Node with more depth and same state
+        boolean addCurrent = true;
         for(PathNode node : openList) {
             if(nextNode.currentDelta.equals(node.currentDelta) && nextNode.cdCast()<node.cdCast() )
                 if(nextNode.depth < node.depth)
@@ -366,7 +393,17 @@ class PathNode {
             }
             this.currentDelta.sum(cast.delta);
         }
-        
+    }
+    
+    public PathNode(PathNode parent, Receipt cast, int repeat) {
+        this(parent, cast);
+        this.repeat = repeat;
+        if(Univers.CASTS.equals(this.step.action)) {
+            //already take one
+            for(int i = 0 ; i < repeat ; i++) {
+                this.currentDelta.sum(cast.delta);
+            }
+        }
     }
     
     public double weight(Receipt destination) {
@@ -400,7 +437,7 @@ class PathNode {
 
 class Receipt {
     public static Receipt wait_receipt = new Receipt(Univers.SPECIAL_RECEIPT_ID, Univers.WAIT, Delta.ZERO, 0, 0, 0, true, false);
-    public static Receipt res_receipt = new Receipt(Univers.SPECIAL_RECEIPT_ID, Univers.REST, Delta.ZERO, 0, 0, 0, true, false);
+    public static Receipt rest_receipt = new Receipt(Univers.SPECIAL_RECEIPT_ID, Univers.REST, Delta.ZERO, 0, 0, 0, true, false);
     
     int actionId;
     String action;
@@ -576,6 +613,10 @@ class Delta {
         ret.t3 = (delta.t3 < 0)? this.t3+delta.t3: 0;
         ret.t4 = (delta.t4 < 0)? this.t4+delta.t4: 0;
         return ret;
+    }
+    
+    public Delta multiply(int factor) {
+        return new Delta(this.t1 * factor, this.t2 * factor, this.t3 * factor, this.t4 * factor);
     }
 }
 
