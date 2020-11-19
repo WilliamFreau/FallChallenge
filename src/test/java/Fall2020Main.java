@@ -10,8 +10,8 @@ public class Fall2020Main {
         gameRunner.setLeagueLevel(3);
 
         //Add players
-        gameRunner.addAgent(BasicAgent.class, "Kotake");
-        gameRunner.addAgent(BasicAgent.class, "Koume");
+        gameRunner.addAgent(v5.Player.class, "Kotake");
+        gameRunner.addAgent(v5.Player.class, "Koume");
 
         //Set game seed
         gameRunner.setSeed(5842184981578562716L);
