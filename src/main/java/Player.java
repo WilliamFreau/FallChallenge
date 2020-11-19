@@ -4,8 +4,8 @@ import java.util.*;
  * Static class Univers to keep track info between turn
  */
 class Univers {
-    public static boolean DEBUG = false;
-    public static boolean INFO = true;
+    public static boolean DEBUG = false;            //Permet de change rle niveau de log.
+    public static boolean INFO = true;              //Désactiver tout pour le submit, cela fait gagner du temps!
     
     public static final String WAIT = "WAIT";
     public static final String REST  = "REST";
@@ -17,11 +17,18 @@ class Univers {
     
     
     public static final int BUFFER = 256;
+    public static final int NUMBER_BREW_TO_STOP = 6;
+    
+    public static int MY_BREW_NUMBER = 0;
+    public static int OPPONENT_BREW_NUMBER = 0;
     
     public static Inventory myself = new Inventory();           //My inventory
     public static Inventory opponent = new Inventory();         //Opponent Inventory
     public static List<Receipt> learnable = new ArrayList<>();       //Keep tack of learn
     public static List<Receipt> brewable = new ArrayList<>();       //Keep track of brewables
+    
+    private static int lastOpponentScore;
+    private static int lastScore;
     
     public static Receipt currentDestination = null;
     
@@ -30,18 +37,28 @@ class Univers {
         List<Receipt> ret = new ArrayList<>(old.size());
         old.forEach(receipt -> ret.add(receipt.clone()));
         return ret;
+    }   //Usefull function used to clone a List
+    
+    public static void checkOpponentBrew() {                        //Keep track of number of Brew
+        if(myself.score > lastScore) {
+            MY_BREW_NUMBER++;
+            currentDestination = null;
+        }
+        if(opponent.score > lastOpponentScore)
+            OPPONENT_BREW_NUMBER++;
     }
     
-    
-    
-    public static void clean() {
+    public static void clean() {                                //Partial reset the Univers between turn
         myself.castable.clear();
         opponent.castable.clear();
         learnable.clear();
         brewable.clear();
+        lastOpponentScore = opponent.score;
+        lastScore = myself.score;
     }
     
-    public static boolean destNoMoreBrewable() {
+    public static boolean destNoMoreBrewable() {            //Look if destination is currently in brewable
+                                                            //In case of the opponent had brew before me
         for(Receipt brew : brewable) {
             if(currentDestination.actionId == brew.actionId)
                 return false;
@@ -102,46 +119,38 @@ class Player {
                     Univers.opponent.score = score;
                 }
             }
+            Univers.checkOpponentBrew();
+            
             // Write an action using System.out.println()
             // To debug: System.err.println("Debug messages...");
             Solver solver = new Solver();
             solver.solve();
-            Path path = null;
-            if(Univers.currentDestination == null || Univers.destNoMoreBrewable() || solver.paths.get(Univers.currentDestination) == null) {
-                double avg = 0;
-                int nb = 0;
-                for(Path pavg : solver.paths.values()){
-                    if(pavg != null) {
-                        avg += pavg.nodes.size();
-                        nb ++;
-                    }
-                }
-                avg = avg/nb;
-                double min = Double.MAX_VALUE;
-                for (Path p : solver.paths.values()) {
-                    if ((p.nodes.size() - avg) < min) {
-                        path = p;
-                        min = (p.nodes.size() - avg);
-                    }
-                }
-                if (path != null) {
-                    Univers.currentDestination = path.destination;
-                    if (Univers.INFO) {
-                        System.err.println("New destination: " + path.destination.actionId);
-                    }
-                }
-            } else {
-                path = solver.paths.get(Univers.currentDestination);
-            }
+            Path path = PathChooser.getPath(solver);
             
             if(Univers.INFO){
-                System.err.println("Current destination: " + Univers.currentDestination.actionId);
+                if(Univers.currentDestination != null) {
+                    System.err.println("Current destination: " + Univers.currentDestination.actionId);
+                }
             }
             
             // in the first league: BREW <id> | WAIT; later: BREW <id> | CAST <id> [<times>] | LEARN <id> | REST | WAIT
             Timer.printElapsed();
             if(path == null){
-                System.out.println("WAIT path null");
+                if(Univers.myself.castable.stream().anyMatch(receipt -> !receipt.castable))
+                    System.out.println("REST 01");
+                else {
+                    if(Univers.learnable.size() > 0){
+                        //Learn if Possible
+                        for(Receipt learn : Univers.learnable) {
+                            if(Univers.myself.delta.t1 < learn.tome_index)
+                                continue;
+                            System.out.println(learn.action + " " + learn.actionId + " 01");
+                            break;
+                        }
+                    } else {
+                        System.out.println("WAIT 01");
+                    }
+                }
             } else {
                 System.out.println(path.nodes.get(0).asAction());
             }
@@ -149,12 +158,126 @@ class Player {
     }
 }
 
+
+/**
+ * Class static permettant de choisir le meuilleur chemin parmis tout ceux possible
+ */
+class PathChooser {
+    /**
+     *
+     * @param solver
+     * @return
+     */
+    public static Path getPath(Solver solver) {
+        Path path = null;
+        
+        int minBrewRemain = Math.min(Univers.NUMBER_BREW_TO_STOP - Univers.MY_BREW_NUMBER,
+                                        Univers.NUMBER_BREW_TO_STOP - Univers.OPPONENT_BREW_NUMBER);
+        int minScoreToFirst = ((Univers.opponent.score + Univers.opponent.delta.getEndScoreBonus()) - (Univers.myself.score + Univers.myself.delta.getEndScoreBonus()));
+        if(minScoreToFirst < 0)
+            minScoreToFirst = 0;
+        double requireScorePerBrewToWin = (double)minScoreToFirst/(double)minBrewRemain;
+        if(Univers.INFO)
+            System.err.println("Require score per Brew: " + requireScorePerBrewToWin);
+        
+        if((Univers.MY_BREW_NUMBER == (Univers.NUMBER_BREW_TO_STOP -1) || Univers.OPPONENT_BREW_NUMBER == (Univers.NUMBER_BREW_TO_STOP -1))
+                && Univers.myself.score > Univers.opponent.score) {
+            //Need to finish quickly!
+            if(Univers.INFO){
+                System.err.println("Need to finish quickly");
+            }
+            //Take min Path length
+            double min = Double.MAX_VALUE;
+            for (Path p : solver.paths.values()) {
+                if (p.nodes.size() < min) {
+                    path = p;
+                    min = p.nodes.size();
+                }
+            }
+        } else if(Univers.currentDestination == null || Univers.destNoMoreBrewable() || solver.paths.get(Univers.currentDestination) == null) {
+            double avgLength = 0;
+            double avgScore = 0;
+            int nb = 0;
+            for(Path pavg : solver.paths.values()){
+                if(pavg != null) {
+                    avgLength += pavg.nodes.size();
+                    avgScore += pavg.destination.price;
+                    nb ++;
+                }
+            }
+            avgLength = avgLength/nb;                       //Contains the average path length
+            avgScore = avgScore/nb;                       //Contains the average path length
+            double min = Double.MAX_VALUE;
+            for (Path p : solver.paths.values()) {
+                if((minBrewRemain <= 3 && p.destination.price > requireScorePerBrewToWin) || (minBrewRemain > 3 && p.destination.price >= avgScore))  //filter to stay first
+                if ((p.nodes.size() - avgLength) < min) {
+                    path = p;
+                    min = (p.nodes.size() - avgLength);
+                }
+            }
+            if(path == null){
+                min = Double.MAX_VALUE;
+                for (Path p : solver.paths.values()) {
+                    if (p.nodes.size() < min) {
+                        path = p;
+                        min = p.nodes.size();
+                    }
+                }
+            }
+            if (path != null) {
+                Univers.currentDestination = path.destination;
+                if (Univers.INFO) {
+                    System.err.println("New destination: " + path.destination.actionId);
+                }
+            }
+        } else {
+            if(Univers.MY_BREW_NUMBER == (Univers.NUMBER_BREW_TO_STOP -1) || Univers.OPPONENT_BREW_NUMBER == (Univers.NUMBER_BREW_TO_STOP -1)) {
+                //Me or opponent is at one to the end
+                //Try to stole the victory
+                if(! (Univers.currentDestination.price+(Univers.myself.score + Univers.myself.delta.getEndScoreBonus())
+                        > (Univers.opponent.score + Univers.opponent.delta.getEndScoreBonus()))
+                    ) {
+                    //The current destination is not enought to won!
+                    //Change destination to the receipt who permit to me to won and closet
+                    int missingScore = Univers.opponent.score - Univers.myself.score;
+                    
+                    Path choosen = null;
+                    int dist = Integer.MAX_VALUE;
+                    for(Path p : solver.paths.values()) {
+                        if(p.destination.price >= missingScore && p.nodes.size() < dist) {
+                            dist = p.nodes.size();
+                            choosen = p;
+                        }
+                    }
+                    
+                    if(choosen != null) {
+                        if(Univers.INFO) {
+                            System.err.println("New dest because of score! " + choosen.destination.actionId);
+                        }
+                        Univers.currentDestination= choosen.destination;
+                    } else {    //Missing point and no Receipt to won
+                        //Try to increase number of non T1 in my inventory!
+                        
+                        if(Univers.INFO) {
+                            System.err.println("Missing point and no Receipt to won ");
+                        }
+                    }
+                }
+            }
+            path = solver.paths.get(Univers.currentDestination);
+            
+        }
+        
+        return path;
+    }
+}
+
 /**
  * Permit to solve all Brewable from my inventory
  */
 class Solver {
-    private static final int DEPTH_LIMIT = 100;
-    private static long mean_required_solve_time = 50;
+    private static final int DEPTH_LIMIT = 25;
+    private static long mean_required_solve_time = 90000;
     private static long number_solve_turn = 1;
     
     private final Inventory myself;
@@ -230,29 +353,25 @@ class Solver {
             }
             openList.remove(current);
             
-            if(Univers.DEBUG) {
-                System.err.println("|   " + current.currentDelta.toString() + " depth: " + current.depth + " w: " + minW);
-            }
             if(current.currentDelta.greaterThan(destination.delta.abs())) {
                 //Arrived Need to create Brew PathNode
                 arrival = new PathNode(current, destination);
                 break;
             }
-            
+    
             //Create subnode for Learnable
             for(Receipt learn : current.learnable) {
                 if(current.currentDelta.t1 < learn.tome_index)
                     continue;
-                
+        
                 PathNode nextNode = new PathNode(current, learn);
-                
+        
                 //Look if it's not a duplicated state with better depth
                 keepOpenListClean(openList, nextNode);
             }
             
             //Create subnode for cast
             for(Receipt cast : current.castables) {
-                boolean addCurrent = true;
                 PathNode nextNode;
                 if(!cast.castable) {        //Look if need to rest
                     nextNode = new PathNode(current, Receipt.rest_receipt.clone());
@@ -267,7 +386,7 @@ class Solver {
                         int multiply = 1;
                         Delta nDelta = cast.delta.multiply(multiply);
                         while(current.currentDelta.feasable(nDelta)) {
-                            nextNode = new PathNode(current, cast.clone());
+                            nextNode = new PathNode(current, cast.clone(), multiply);
                             if(nextNode.depth > DEPTH_LIMIT)                        //Stop at depth
                                 break;
                             
@@ -290,7 +409,6 @@ class Solver {
                         keepOpenListClean(openList, nextNode);
                     }
                 }
-
             }
             
             mean_required_solve_time += (Timer.currentElapsed()-startTime);
@@ -314,7 +432,7 @@ class Solver {
         List<PathNode> toRemove = new ArrayList<>();            //Node with more depth and same state
         boolean addCurrent = true;
         for(PathNode node : openList) {
-            if(nextNode.currentDelta.equals(node.currentDelta) && nextNode.cdCast()<node.cdCast() )
+            if(nextNode.currentDelta.equals(node.currentDelta))
                 if(nextNode.depth < node.depth)
                     toRemove.add(node);
                 else
@@ -326,11 +444,16 @@ class Solver {
         
         if(addCurrent) {                 //Have found the same state with a better depth
             openList.add(0, nextNode);
+            if(Univers.DEBUG) {
+                System.err.println("|   " + nextNode.currentDelta.toString() + " depth: " + nextNode.depth + " id: " + nextNode.step.actionId);
+            }
         }
     }
 }
 
-
+/**
+ * Class utilisé pour modéliser un path vers une receipt
+ */
 class Path {
     public Receipt destination;
     public List<PathNode> nodes;
@@ -348,9 +471,21 @@ class Path {
             this.nodes.add(0, current);
             current = current.parent;
         }
+        
+        if(Univers.INFO){
+            System.err.print("[ ");
+            for(PathNode node : nodes){
+                System.err.print(node.step.actionId + " ");
+            }
+            System.err.println("]");
+        }
     }
 }
 
+/**
+ * Un noeud du path pouvant être n'importe qu'elle action et contient aussi les états utilisé pour le solver
+ * Gére le repeatable
+ */
 class PathNode {
     public PathNode parent;
     public Receipt step;
@@ -378,11 +513,12 @@ class PathNode {
         this.step.castable = false;
         
         if(Univers.LEARN.equals(this.step.action)) {
-            this.currentDelta.t1 -= this.step.tome_index;
+            this.currentDelta.t1 -= (this.step.tome_index-1);
             this.currentDelta.t1 += this.step.tax_count;
             this.learnable.remove(this.step);
             Receipt newCast = this.step.clone();
             newCast.action = Univers.CASTS;
+            newCast.castable=true;
             this.castables.add(newCast);
         } else if(Univers.REST.equals(this.step.action))    {
             this.castables.forEach(receipt -> receipt.castable = true);
@@ -406,9 +542,18 @@ class PathNode {
         }
     }
     
+    /**
+     * Less is best
+     * @param destination
+     * @return
+     *
+     *
+     *
+     * d.abs().sum()*depth - castables.size()*2.0f;
+     */
     public double weight(Receipt destination) {
         Delta d = this.currentDelta.getMissings(destination.delta);
-        return d.abs().sum()*3.0d - depth + castables.size();
+        return d.abs().sum() *2.0d * depth + castables.size()*1.5d - (step != null && Univers.BREW.equals(step.action)?30:0);
     }
     
     public String asAction() {
@@ -417,7 +562,6 @@ class PathNode {
         
         if(step.actionId == Univers.SPECIAL_RECEIPT_ID)
             return step.action;
-        
         
         return step.action + " " + step.actionId;
     }
@@ -432,9 +576,10 @@ class PathNode {
     }
 }
 
-
-
-
+/**
+ * Une Receipt donc une action du jeux
+ *
+ */
 class Receipt {
     public static Receipt wait_receipt = new Receipt(Univers.SPECIAL_RECEIPT_ID, Univers.WAIT, Delta.ZERO, 0, 0, 0, true, false);
     public static Receipt rest_receipt = new Receipt(Univers.SPECIAL_RECEIPT_ID, Univers.REST, Delta.ZERO, 0, 0, 0, true, false);
@@ -507,6 +652,9 @@ class Receipt {
     }
 }
 
+/**
+ * Delta correspond à ce que demande ou posséde une recept
+ */
 class Delta {
     public static Delta ZERO = new Delta(0, 0, 0, 0);
     
@@ -618,8 +766,15 @@ class Delta {
     public Delta multiply(int factor) {
         return new Delta(this.t1 * factor, this.t2 * factor, this.t3 * factor, this.t4 * factor);
     }
+    
+    public int getEndScoreBonus() {
+        return this.sum()-this.t1;
+    }
 }
 
+/**
+ * Reprécente un inventaire d'un joueur
+ */
 class Inventory {
     Delta delta;
     int score;
@@ -653,6 +808,9 @@ class Inventory {
     }
 }
 
+/**
+ * Class entierement static utilisé pour la gestion du temps
+ */
 class Timer {
     public static final long FIRST_TURN_TIMEOUT = 1000 * 1000 * 1000;
     public static final long EACH_TURN_TIMEOUT = 50    * 1000 * 1000;
