@@ -21,6 +21,8 @@ public class WeightFomulasComparaison {
         List<CombatThread> threads = new ArrayList<>();
         for(int i = 0 ; i < AI.length ; i++)
             for(int j = 0 ; j < AI.length ; j++) {
+                if(i==j)
+                    continue;
                 CombatThread combatThread = new CombatThread(i, j);
                 Thread thread = new Thread(combatThread);
                 thread.start();
@@ -34,14 +36,12 @@ public class WeightFomulasComparaison {
         
         int[][] victory = new int[AI.length][AI.length];
         int[][] draw = new int[AI.length][AI.length];
-        int[][] defeat = new int[AI.length][AI.length];
+        
         for(CombatThread thread : threads){
             for(Combat combat : thread.combats){
                 if(combat.result.scores.get(0) > combat.result.scores.get(1)) {
                     victory[thread.indexP1][thread.indexP2]++;
-                    defeat[thread.indexP2][thread.indexP1]++;
-                } else if(combat.result.scores.get(0) > combat.result.scores.get(1)) {
-                    defeat[thread.indexP1][thread.indexP2]++;
+                } else if(combat.result.scores.get(0) < combat.result.scores.get(1)) {
                     victory[thread.indexP2][thread.indexP1]++;
                 } else {
                     draw[thread.indexP2][thread.indexP1]++;
@@ -54,10 +54,6 @@ public class WeightFomulasComparaison {
     
         System.out.println("Draw");
         printArray(draw);
-        System.out.println("\n");
-    
-        System.out.println("Defeat");
-        printArray(defeat);
         System.out.println("\n");
     }
     
@@ -78,7 +74,10 @@ public class WeightFomulasComparaison {
                     System.out.print(AI[i].getName());
                     System.out.print("\t|\t\t");
                 }
-                System.out.print(result[i][j]);
+                if(i!=j)
+                    System.out.print(result[i][j]);
+                else
+                    System.out.print("");
                 System.out.print("\t\t|\t\t");
             }
             //--------------------

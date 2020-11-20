@@ -26,7 +26,7 @@ public class Heuristique {
      */
     public static double formula5(PathNode node, Receipt destination) {
         Delta d = node.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() * 2.0d * node.depth + node.castables.size() * 1.5d - (node.step != null && Univers.BREW.equals(node.step.action) ? 10 : 0);
+        return d.abs().sum() * node.depth + node.castables.size() * 1.5d - (node.step != null && v2.Univers.BREW.equals(node.step.action) ? 30 : 0);
     }
     
     /**
@@ -38,7 +38,7 @@ public class Heuristique {
      */
     public static double formula4(PathNode node, Receipt destination) {
         Delta d = node.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() * 2.0d * node.depth + node.castables.size();
+        return d.abs().sum() * node.depth + node.castables.size() * 1.5d - (node.step != null && v2.Univers.BREW.equals(node.step.action) ? 30 : 0);
     }
     
     /**
@@ -50,7 +50,7 @@ public class Heuristique {
      */
     public static double formula3(PathNode node, Receipt destination) {
         Delta d = node.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() * 2.0d * node.depth + node.castables.size() * 3d - (node.step != null && Univers.BREW.equals(node.step.action) ? 30 : 0);
+        return d.abs().sum() * node.depth + node.castables.size() * 1.5d - (node.step != null && v2.Univers.BREW.equals(node.step.action) ? 30 : 0);
     }
     
     /**
@@ -62,7 +62,7 @@ public class Heuristique {
      */
     public static double formula2(PathNode node, Receipt destination) {
         Delta d = node.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() * 2.0d * node.depth + node.castables.size() * 0.5d - (node.step != null && Univers.BREW.equals(node.step.action) ? 30 : 0);
+        return d.abs().sum() * node.depth + node.castables.size() * 1.5d - (node.step != null && v2.Univers.BREW.equals(node.step.action) ? 30 : 0);
     }
     
     /**
@@ -74,6 +74,6 @@ public class Heuristique {
      */
     public static double defaultFormulas(PathNode node, Receipt destination) {
         Delta d = node.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() * 2.0d * node.depth + node.castables.size() * 1.5d - (node.step != null && Univers.BREW.equals(node.step.action) ? 30 : 0);
+        return d.abs().sum() * node.depth + node.castables.size() * 1.5d - (node.step != null && Univers.BREW.equals(node.step.action) ? 30 : 0);
     }
 }

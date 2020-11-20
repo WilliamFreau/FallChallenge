@@ -553,7 +553,7 @@ class PathNode {
      */
     public double weight(Receipt destination) {
         Delta d = this.currentDelta.getMissings(destination.delta);
-        return d.abs().sum() *2.0d * depth + castables.size()*1.5d - (step != null && Univers.BREW.equals(step.action)?30:0);
+        return d.abs().sum() * 2.0d * this.depth + this.castables.size() * 1.5d - (this.step != null && Univers.BREW.equals(this.step.action) ? 10 : 0);
     }
     
     public String asAction() {
